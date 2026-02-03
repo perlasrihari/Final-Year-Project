@@ -8,5 +8,15 @@
     "github.copilot.chat.languageContext.typescript.enabled": true,
     "github.copilot.chat.notebook.followCellExecution.enabled": true,
     "liveServer.settings.port": 5501,
-    "CodeGPT.apiKey": "OpenAI"
+    "CodeGPT.apiKey": "OpenAI",
+    "chat.tools.terminal.autoApprove": {
+        "/^C:\\\\Users\\\\Perla Srihari\\\\Documents\\\\HOUSE RENT PREDICTION\\\\HOUSE RENT PREDICTION\\\\\\.venv\\\\Scripts\\\\python\\.exe -c \"import importlib, sys\ntry:\n    importlib\\.import_module\\('flask_login'\\)\n    sys\\.exit\\(0\\)\nexcept Exception as e:\n    print\\('ERROR', type\\(e\\)\\.__name__, str\\(e\\)\\)\n    sys\\.exit\\(1\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^C:\\\\Users\\\\Perla Srihari\\\\Documents\\\\HOUSE RENT PREDICTION\\\\HOUSE RENT PREDICTION\\\\\\.venv\\\\Scripts\\\\python\\.exe -m pip install -r \"C:\\\\Users\\\\Perla Srihari\\\\Documents\\\\HOUSE RENT PREDICTION\\\\HOUSE RENT PREDICTION\\\\requirements\\.txt\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

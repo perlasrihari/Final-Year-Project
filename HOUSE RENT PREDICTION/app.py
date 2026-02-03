@@ -63,8 +63,46 @@ csrf = CSRFProtect(app)
 mail = Mail(app)
 
 # Initialize database tables (including PredictionResult)
+# If the configured DB is a local sqlite file, verify its header to avoid "file is not a database" errors.
 with app.app_context():
     try:
+        uri = app.config.get("SQLALCHEMY_DATABASE_URI", "") or ""
+        if uri.startswith("sqlite:///"):
+            # Resolve relative paths against multiple plausible locations (cwd, BASE_DIR, app.instance_path)
+            db_rel = uri.replace("sqlite:///", "", 1)
+            candidates = []
+            # direct path
+            candidates.append(db_rel)
+            # relative to BASE_DIR (where app.py lives)
+            candidates.append(os.path.join(BASE_DIR, db_rel))
+            # relative to app.instance_path
+            try:
+                candidates.append(os.path.join(app.instance_path, os.path.basename(db_rel)))
+            except Exception:
+                pass
+            # relative to current working directory
+            candidates.append(os.path.join(os.getcwd(), db_rel))
+
+            checked = False
+            for db_path in candidates:
+                try:
+                    if os.path.exists(db_path):
+                        with open(db_path, "rb") as f:
+                            header = f.read(16)
+                        checked = True
+                        if header != b"SQLite format 3\x00":
+                            backup_path = db_path + ".corrupt"
+                            try:
+                                os.replace(db_path, backup_path)
+                                app.logger.warning(f"Detected corrupted sqlite DB. Renamed '{db_path}' -> '{backup_path}'")
+                            except Exception as ex:
+                                app.logger.error(f"Failed to back up corrupted DB '{db_path}': {ex}")
+                            # only handle the first existing db file we find
+                            break
+                except Exception as ex:
+                    app.logger.error(f"Error while checking sqlite DB file '{db_path}': {ex}")
+            if not checked:
+                app.logger.debug("No local sqlite DB file found among candidates; proceeding to create a new DB if necessary.")
         db.create_all()
     except Exception as e:
         app.logger.error(f"DB init error: {e}")
@@ -202,17 +240,26 @@ def load_ui_dataset(path: str) -> None:
         ui_df = None
         app.logger.error(f"Dataset load error: {e}")
 
-try:
-    if os.path.exists(MODEL_PATH):
-        model = joblib.load(MODEL_PATH)
-        app.logger.info("ML model loaded successfully.")
-    else:
-        app.logger.warning(f"Model file not found at {MODEL_PATH}")
-    load_ui_dataset(DATASET_PATH)
-except Exception as e:
-    app.logger.error(f"Error initializing model or dataset: {e}")
-    model = None
-    ui_df = None
+def get_model():
+    """Lazy-load and cache the ML model. Returns the model or None."""
+    global model
+    if model is not None:
+        return model
+    try:
+        if os.path.exists(MODEL_PATH):
+            import time
+            t0 = time.time()
+            model = joblib.load(MODEL_PATH)
+            app.logger.info(f"ML model loaded successfully in {time.time() - t0:.2f}s.")
+        else:
+            app.logger.warning(f"Model file not found at {MODEL_PATH}")
+    except Exception as e:
+        app.logger.error(f"Model load error: {e}")
+        model = None
+    return model
+
+# Load dataset at startup; model will be loaded lazily when needed
+load_ui_dataset(DATASET_PATH)
 
 
 # ======================================================
@@ -634,7 +681,8 @@ def rent_prediction():
     form.area_type.choices = [(a, a) for a in area_type_options]
 
     if form.validate_on_submit():
-        if model is None:
+        mdl = get_model()
+        if mdl is None:
             flash("Prediction model is not available.", "danger")
         else:
             try:
@@ -649,7 +697,7 @@ def rent_prediction():
                     "Area Type": [form.area_type.data],
                 }
                 input_df = pd.DataFrame(data)
-                predicted = model.predict(input_df)[0]
+                predicted = mdl.predict(input_df)[0]
                 prediction_result = f"₹{predicted:,.0f}"
             except Exception as e:
                 app.logger.error(f"Prediction error: {e}")
